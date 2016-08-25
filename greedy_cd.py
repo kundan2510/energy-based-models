@@ -7,9 +7,12 @@ from layers import FC, WrapperLayer
 import theano
 import theano.tensor as T
 import lasagne
+import random
 
 from matplotlib.pyplot import cm
 import matplotlib.pyplot as plt
+
+numpy.random.seed(seed = 123)
 
 def get_data(num_examples, dtype='spiral'):
 	"dtype : 'circle', 'spiral', 'quadratic', linear"
@@ -40,7 +43,7 @@ def floatX(num):
 def plot_fn_val(fn, rng, points=None, name = ""):
 	"rng will be a list of tuples, specifiying range for x and y"
 	(x_beg, x_end), (y_beg, y_end) = rng
-	X, Y = numpy.mgrid[x_beg:x_end:15j, y_beg:y_end:15j].astype('float32')
+	X, Y = numpy.mgrid[x_beg:x_end:30j, y_beg:y_end:30j].astype('float32')
 
 
 	fno = fn(numpy.concatenate((X.reshape((1,-1)), Y.reshape((1,-1))), axis = 0).T).reshape(X.shape+(2,))
@@ -59,13 +62,14 @@ def plot_fn_val(fn, rng, points=None, name = ""):
 
 	plt.quiver(X, Y, UN, VN,        # data
            U,                   # colour the arrows based on this array
-           cmap=cm.seismic,     # colour map
-           headlength=7)        # length of the arrows
+           cmap=cm.winter,     # colour map
+           headlength=3,
+           clim = [0.,1.]) 
 
 	plt.colorbar()                  # adds the colour bar
 
 	plt.title('Energy Gradient plot')
-	plt.savefig('gradient_with_point_{}.jpg'.format(name)) 
+	plt.savefig('gradient_with_point_{}_circle1.jpg'.format(name)) 
 	plt.clf()
 
 def plot_data(X, name):
@@ -109,8 +113,8 @@ neg_energy_grad_theta = [floatX(-1.)*g for g in energy_grad_theta]
 
 negative_examples = X - eta*energy_grad_X
 
-update_pos = lasagne.updates.sgd(energy_grad_theta, params, 0.0001)
-update_neg = lasagne.updates.sgd(neg_energy_grad_theta, params, 0.0001)
+update_pos = lasagne.updates.adam(energy_grad_theta, params, 0.0001)
+update_neg = lasagne.updates.adam(neg_energy_grad_theta, params, 0.0001)
 
 get_neg_examples = theano.function([X, eta], negative_examples)
 
@@ -120,24 +124,36 @@ train_down = theano.function([X], energy_sum, updates = update_neg)
 get_energy = theano.function([X], energy_sum)
 get_energy_grad = theano.function([X], energy_grad_X)
 
-def train_batch(x):
+def train_batch(x, eps):
 	pos_examples = x
-	n_x = get_neg_examples(x, floatX(0.001))
+	n_x = get_neg_examples(x, floatX(eps))
 	en_x = train_up(x)
 	en_n_x = train_down(n_x)
 	return en_x, en_n_x
 	
 # plot_fn_val(get_energy_grad, [(-3,3),(-3,3)])
-X = get_data(100, dtype="circle")
+X = get_data(1000, dtype="circle")
 
+
+
+E_x = []
+
+eps = 0.001
 for i in range(1000000):
-	en_x, en_n_x = train_batch(X)
+	batch = X[random.sample(xrange(1000), 10)]
+	en_x, en_n_x = train_batch(batch, eps)
+	E_x.append(en_x)
 	if (i % 100) == 0:
 		print "Energy for X in iter {} : {}, X_neg : {}".format(i, en_x, en_n_x)
+		plt.plot(numpy.arange(len(E_x)), numpy.asarray(E_x), ".-")
+		plt.savefig("Energy_diagram_circle1.jpg")
+		plt.clf()
 
-	if (i % 10000) == 0:
-		plot_fn_val(get_energy_grad, [(-1,1),(-1,1)], points=X, name = "iter_{}".format(i) )
+	if (i % 5000) == 0:
+		eps = eps*0.75
+		plot_fn_val(get_energy_grad, [(-1.5,1.5),(-1.5,1.5)], points=X, name = "iter_{}".format(i) )
 
+	
 
 
 

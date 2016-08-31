@@ -38,6 +38,7 @@ def linear_transform_weights(input_dim, output_dim, initialization = 'glorot', p
 	if initialization == 'glorot':
 		weight_inialization = uniform(numpy.sqrt(2.0/input_dim),(input_dim, output_dim))
 	else:
+		# weight_inialization = uniform(3.,(input_dim, output_dim))
 		raise Exception("Not Implemented Error: {} initialization not implemented".format(initialization))
 
 	W = theano.shared(weight_inialization, name=name)
@@ -162,7 +163,7 @@ class GRU(Layer):
 
 
 		'''calculating processed input for all time steps in one go'''
-		processed_input = T.dot(self.X, self.W_i) + self.b_i 
+		processed_input = T.dot(self.X, self.W_i) + self.b_i
 
 		'''step through processed input to create output'''
 		def step(processed_input_curr, s_prev):
@@ -180,7 +181,7 @@ class GRU(Layer):
 				processed_input_curr[:,2*self.hidden_dim:] + \
 				reset * processed_prev_state[:, 2*self.hidden_dim:]
 				)
-			
+
 
 			s_curr = ((floatX(1) - update) * hidden) + (update * s_prev)
 
@@ -230,7 +231,7 @@ class Softmax(Layer):
 		return T.nnet.softmax(self.X.reshape((-1,self.input_shape[self.X.ndim-1]))).reshape(self.input_shape)
 
 class FC(Layer):
-	def __init__(self, input_dim, output_dim, input_layer, is_train = None, w_norm = False, drop_p = 0.0, name=""):
+	def __init__(self, input_dim, output_dim, input_layer, is_train = None, w_norm = False, drop_p = 0.0, name="", bias = True):
 		self.input_layer = input_layer
 		self.name = name
 		self.params = []
@@ -244,10 +245,14 @@ class FC(Layer):
 			self.X = dropout(self.X,is_train,drop_p)
 
 		self.W = linear_transform_weights(input_dim, output_dim, param_list = self.params, name=name+".W", w_normalization=w_norm)
-		self.b = bias_weights((output_dim,), param_list = self.params, name = name+".b")
+		if bias:
+			self.b = bias_weights((output_dim,), param_list = self.params, name = name+".b")
+			self.out = T.dot(self.X, self.W) + self.b
+		else:
+			self.out = T.dot(self.X, self.W)
 
 	def output(self):
-		return T.dot(self.X, self.W) + self.b
+		return self.out
 
 
 class Concat(Layer):
@@ -307,7 +312,7 @@ class Conv1D(Layer):
 
 		self.bias = bias_weights((output_channels,), param_list = self.params, name = name+'.b')
 
-	
+
 	def apply(self, X):
 		X = X.dimshuffle(0,2,'x',1)
 		conv_out = T.nnet.conv2d(X, self.filter, border_mode = self.border_mode, filter_flip=False)
@@ -329,6 +334,26 @@ class WrapperLayer(Layer):
 		return self.X
 
 
+class ExponentialCost(Layer):
+	def __init__(self, input_dim, num_components, X, temp=1., name=""):
+		self.params = []
+		self.name = name
+
+		mu_s_init = uniform(1., (num_components, input_dim))
+
+		mu_s = theano.shared(mu_s_init, name = name+".mu_s_init")
+
+		self.params.append(mu_s)
+
+		difference = (mu_s[None,:,:] - X.output()[:, None, :])
+		sq_diff = difference*difference/floatX(temp)
+
+		component_exp = floatX(-1.)*(T.mean(sq_diff, axis = 2))
+
+		self.out = T.sum(floatX(-1.)*T.exp(component_exp))
+
+	def output(self):
+		return self.out
 
 
 
@@ -336,6 +361,5 @@ class WrapperLayer(Layer):
 
 
 
-		
 
 
